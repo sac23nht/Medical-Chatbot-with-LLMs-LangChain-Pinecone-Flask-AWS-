@@ -1,48 +1,54 @@
-
 from dotenv import load_dotenv
 import os
 from helper import load_pdf_file, filter_to_minimal_docs, text_split, download_hugging_face_embeddings
-from pinecone import Pinecone
-from pinecone import ServerlessSpec 
-from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone, ServerlessSpec  # ✅ v3 SDK
+from langchain_pinecone import PineconeVectorStore  # ✅ new adapter
 
+# Load environment variables
 load_dotenv()
 
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-PINECONE_API_KEY=os.environ.get('PINECONE_API_KEY')
-OPENAI_API_KEY=os.environ.get('OPENAI_API_KEY')
+if not PINECONE_API_KEY:
+    raise ValueError("PINECONE_API_KEY not found in environment variables.")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables.")
 
-os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+# Path setup
+base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+pdf_folder = os.path.join(base_path, "data")
 
-
-pdf_folder = "../data"  # go one directory up, then into 'data' folder
+# Load PDF data
 extracted_data = load_pdf_file(pdf_folder)
 filter_data = filter_to_minimal_docs(extracted_data)
-text_chunks=text_split(filter_data)
+text_chunks = text_split(filter_data)
 
+# Download embeddings
 embeddings = download_hugging_face_embeddings()
 
-pinecone_api_key = PINECONE_API_KEY
-pc = Pinecone(api_key=pinecone_api_key)
+# ✅ Initialize Pinecone (v3)
+pc = Pinecone(api_key=PINECONE_API_KEY)
 
+# Index name
+index_name = "medical-chatbot"
 
-
-index_name = "medical-chatbot"  # change if desired
-
-if not pc.has_index(index_name):
+# Create index if missing
+if index_name not in [idx["name"] for idx in pc.list_indexes()]:
     pc.create_index(
         name=index_name,
-        dimension=384,
+        dimension=384,  # must match embedding size
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1"),
     )
 
-index = pc.Index(index_name)
-
-
+# ✅ Use new LangChain integration
 docsearch = PineconeVectorStore.from_documents(
     documents=text_chunks,
+    embedding=embeddings,
     index_name=index_name,
-    embedding=embeddings, 
+    namespace=None,
+    pinecone_api_key=PINECONE_API_KEY,
 )
+
+print(f"Stored {len(text_chunks)} chunks in Pinecone.")
