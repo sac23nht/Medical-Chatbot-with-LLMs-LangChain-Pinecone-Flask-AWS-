@@ -8,12 +8,9 @@ from langchain_pinecone import PineconeVectorStore  # ✅ new adapter
 load_dotenv()
 
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 if not PINECONE_API_KEY:
     raise ValueError("PINECONE_API_KEY not found in environment variables.")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY not found in environment variables.")
 
 # Path setup
 base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,7 +28,7 @@ embeddings = download_hugging_face_embeddings()
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 # Index name
-index_name = "medical-chatbot"
+index_name = os.environ.get("PINECONE_INDEX_NAME", "medical-chatbot")
 
 # Create index if missing
 if index_name not in [idx["name"] for idx in pc.list_indexes()]:

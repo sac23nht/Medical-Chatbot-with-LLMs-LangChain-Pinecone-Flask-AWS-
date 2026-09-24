@@ -6,7 +6,8 @@
 Clone the repository
 
 ```bash
-git clonehttps://github.com/entbappy/Build-a-Complete-Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS.git
+git clone https://github.com/sac23nht/Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS-.git
+cd Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS-
 ```
 ### STEP 01- Create a conda environment after opening the repository
 
@@ -25,17 +26,19 @@ pip install -r requirements.txt
 ```
 
 
-### Create a `.env` file in the root directory and add your Pinecone & openai credentials as follows:
+### Create a `.env` file in the root directory and add your Pinecone credentials as follows:
 
 ```ini
 PINECONE_API_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-OPENAI_API_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# optional, defaults to "medical-chatbot"
+# PINECONE_INDEX_NAME = "medical-chatbot"
 ```
 
 
 ```bash
-# run the following command to store embeddings to pinecone
-python store_index.py
+# run the following command ONCE to store embeddings to pinecone
+# (the app cannot answer anything until this index exists)
+python src/store_index.py
 ```
 
 ```bash
@@ -58,6 +61,42 @@ open up localhost:
 - Pinecone
 
 
+
+# Deployment (Docker: Render, Hugging Face Spaces, any container host)
+
+The `Dockerfile` builds a production image served by gunicorn on `$PORT`
+(default 8080). It downloads the models at build time, so start-up does not
+need to fetch ~1 GB from the Hugging Face Hub.
+
+```bash
+docker build -t medibot .
+docker run -p 8080:8080 -e PINECONE_API_KEY=your-key medibot
+```
+
+**Environment variables** (set them as secrets on your host, never commit them):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `PINECONE_API_KEY` | yes | The Pinecone index must already be populated (`python src/store_index.py`) |
+| `PINECONE_INDEX_NAME` | no | Defaults to `medical-chatbot` |
+| `PORT` | no | Set automatically by most hosts |
+
+**Memory: at least 2 GB of RAM is required.** The app loads `flan-t5-base`
+plus an embedding model and uses about 1.3 GB after the first question.
+It will be killed on 512 MB free tiers.
+
+- **Hugging Face Spaces (free, 16 GB RAM):** create a *Docker* Space and add
+  this to the top of the Space's `README.md`:
+  ```yaml
+  ---
+  title: Medical Chatbot
+  sdk: docker
+  app_port: 8080
+  ---
+  ```
+  then add `PINECONE_API_KEY` under Settings > Secrets.
+- **Render:** New Web Service > Language *Docker* > an instance with 2 GB or
+  more RAM. Set the health check path to `/health`.
 
 # AWS-CICD-Deployment-with-Github-Actions
 

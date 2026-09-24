@@ -2,7 +2,7 @@ from flask import Flask, render_template, request
 from src.helper import download_hugging_face_embeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain.llms.base import LLM
-from typing import Optional, List
+from typing import Any, Optional, List
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -20,13 +20,17 @@ app = Flask(__name__)
 # ----------------------------
 load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
+if not PINECONE_API_KEY:
+    raise RuntimeError(
+        "PINECONE_API_KEY is not set. Add it to a .env file locally, or as an "
+        "environment variable / secret on your hosting platform."
+    )
 
 # ----------------------------
 # Pinecone VectorStore
 # ----------------------------
 embeddings = download_hugging_face_embeddings()
-index_name = "medical-chatbot"
+index_name = os.getenv("PINECONE_INDEX_NAME", "medical-chatbot")
 docsearch = PineconeVectorStore.from_existing_index(
     index_name=index_name,
     embedding=embeddings
@@ -38,16 +42,19 @@ retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":
 # ----------------------------
 class HFAPIModel(LLM):
     model_name: str = "google/flan-t5-base"
+    # LangChain LLMs are pydantic models: every attribute must be declared
+    # as a field, otherwise assigning it raises a ValueError at start-up.
+    pipe: Any = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Load tokenizer and model once at startup
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
         self.pipe = pipeline(
             "text2text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
+            model=model,
+            tokenizer=tokenizer,
             max_new_tokens=256,
             device=-1  # CPU; set to 0 for GPU
         )
@@ -88,6 +95,11 @@ rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 # ----------------------------
 # Flask routes
 # ----------------------------
+@app.route("/health")
+def health():
+    return "ok", 200
+
+
 @app.route("/")
 def index():
     return render_template("chat.html")
@@ -107,4 +119,8 @@ def chat():
 
 # ----------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    # Local development only. In production the app is served by gunicorn
+    # (see Dockerfile). debug is off by default: the debug reloader would load
+    # the models twice and exposes an interactive debugger.
+    port = int(os.getenv("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG") == "1")
