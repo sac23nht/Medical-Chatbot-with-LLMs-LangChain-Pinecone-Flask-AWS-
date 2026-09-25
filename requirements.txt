@@ -1,14 +1,9 @@
-# CPU-only PyTorch: the default Linux wheel bundles CUDA and is ~2 GB larger.
---extra-index-url https://download.pytorch.org/whl/cpu
-
+# Runtime dependencies for the web app (lightweight: no torch / local models).
 flask==3.1.1
 gunicorn==26.2.0
 langchain==0.3.26
 langchain-community==0.3.26
 langchain-pinecone==0.2.8
 langchain-huggingface==0.3.1
-sentence-transformers==4.1.0
-transformers==4.57.6
-torch==2.14.0
-pypdf==5.6.1
+langchain-openai==0.3.35
 python-dotenv==1.1.0

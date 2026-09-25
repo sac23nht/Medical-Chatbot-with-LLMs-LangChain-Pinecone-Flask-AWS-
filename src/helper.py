@@ -1,6 +1,5 @@
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings  # ✅ modern package
 from typing import List
 from langchain.schema import Document
 import os
@@ -46,13 +45,30 @@ def text_split(extracted_data: List[Document]) -> List[Document]:
     return text_splitter.split_documents(extracted_data)
 
 
-# Download the Embeddings from HuggingFace
-def download_hugging_face_embeddings() -> HuggingFaceEmbeddings:
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # 384 dimensions
+
+
+# Local embeddings, used by src/store_index.py to build the index.
+# Needs torch + sentence-transformers (see requirements-indexing.txt).
+def download_hugging_face_embeddings():
     """
-    Downloads and returns the HuggingFace embeddings model.
+    Downloads and returns the HuggingFace embeddings model, running locally.
     """
+    from langchain_huggingface import HuggingFaceEmbeddings  # heavy: imported lazily
+
     try:
-        # This model outputs 384 dimensions
-        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     except Exception as e:
         raise RuntimeError(f"Failed to download HuggingFace embeddings: {e}")
+
+
+# Hosted embeddings, used by the web app at query time. Same model as above, so
+# the vectors match the ones already stored in Pinecone, but nothing is loaded
+# into this process's memory.
+def get_api_embeddings(token: str):
+    from langchain_huggingface import HuggingFaceEndpointEmbeddings
+
+    return HuggingFaceEndpointEmbeddings(
+        model=EMBEDDING_MODEL,
+        huggingfacehub_api_token=token,
+    )

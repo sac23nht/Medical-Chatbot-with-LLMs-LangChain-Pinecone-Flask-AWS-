@@ -24,20 +24,31 @@ conda activate medibot
 ```bash
 pip install -r requirements.txt
 ```
+(`requirements.txt` is the lightweight set the web app needs. Building the
+Pinecone index once needs the heavier `requirements-indexing.txt`, see below.)
 
 
-### Create a `.env` file in the root directory and add your Pinecone credentials as follows:
+### Create a `.env` file in the root directory with your credentials:
 
 ```ini
 PINECONE_API_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-# optional, defaults to "medical-chatbot"
+# Free token from https://huggingface.co/settings/tokens
+# (fine-grained, tick "Make calls to Inference Providers").
+# Used for the hosted embedding model and, by default, the LLM.
+HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Optional
 # PINECONE_INDEX_NAME = "medical-chatbot"
+# LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+# LLM_BASE_URL = "https://router.huggingface.co/v1"   # any OpenAI-compatible API
+# LLM_API_KEY = ""                                     # defaults to HF_TOKEN
 ```
 
 
 ```bash
-# run the following command ONCE to store embeddings to pinecone
-# (the app cannot answer anything until this index exists)
+# Run ONCE to store the book's embeddings in Pinecone (the app cannot answer
+# anything until this index exists). This is the only step that needs torch.
+pip install -r requirements-indexing.txt
 python src/store_index.py
 ```
 
@@ -57,46 +68,42 @@ open up localhost:
 - Python
 - LangChain
 - Flask
-- GPT
-- Pinecone
+- Pinecone (vector database)
+- Hugging Face Inference API (`all-MiniLM-L6-v2` embeddings)
+- Any OpenAI-compatible LLM API (Llama 3.1 8B via Hugging Face by default)
 
 
 
-# Deployment (Docker: Render, Hugging Face Spaces, any container host)
+# Deployment (Docker: Render, Railway, Fly.io, any container host)
 
-The `Dockerfile` builds a production image served by gunicorn on `$PORT`
-(default 8080). It downloads the models at build time, so start-up does not
-need to fetch ~1 GB from the Hugging Face Hub.
+The models run on hosted APIs, so the app itself is light: about 150 MB of RAM,
+no GPU. That fits free tiers with 512 MB (Render, ...).
 
 ```bash
 docker build -t medibot .
-docker run -p 8080:8080 -e PINECONE_API_KEY=your-key medibot
+docker run -p 8080:8080 -e PINECONE_API_KEY=... -e HF_TOKEN=... medibot
 ```
 
 **Environment variables** (set them as secrets on your host, never commit them):
 
 | Variable | Required | Notes |
 |---|---|---|
-| `PINECONE_API_KEY` | yes | The Pinecone index must already be populated (`python src/store_index.py`) |
-| `PINECONE_INDEX_NAME` | no | Defaults to `medical-chatbot` |
+| `PINECONE_API_KEY` | yes | The index must already be populated (`python src/store_index.py`) |
+| `HF_TOKEN` | yes | Hugging Face token with "Make calls to Inference Providers" |
+| `LLM_MODEL` | no | Default `meta-llama/Llama-3.1-8B-Instruct` |
+| `LLM_BASE_URL` | no | Default `https://router.huggingface.co/v1`. Point it at Groq, OpenRouter, OpenAI, ... to switch provider |
+| `LLM_API_KEY` | no | Key for `LLM_BASE_URL`; defaults to `HF_TOKEN` |
+| `PINECONE_INDEX_NAME` | no | Default `medical-chatbot` |
 | `PORT` | no | Set automatically by most hosts |
 
-**Memory: at least 2 GB of RAM is required.** The app loads `flan-t5-base`
-plus an embedding model and uses about 1.3 GB after the first question.
-It will be killed on 512 MB free tiers.
+**Render:** New Web Service > connect this repo > Language *Docker* > Instance
+type *Free* > add the two required variables under Environment > set the
+health check path to `/health`. Free instances sleep when idle, so the first
+request after a pause takes about a minute.
 
-- **Hugging Face Spaces (free, 16 GB RAM):** create a *Docker* Space and add
-  this to the top of the Space's `README.md`:
-  ```yaml
-  ---
-  title: Medical Chatbot
-  sdk: docker
-  app_port: 8080
-  ---
-  ```
-  then add `PINECONE_API_KEY` under Settings > Secrets.
-- **Render:** New Web Service > Language *Docker* > an instance with 2 GB or
-  more RAM. Set the health check path to `/health`.
+Note: the free Hugging Face token has a limited monthly allowance for hosted
+inference. For heavier use, switch the LLM to another provider with the three
+`LLM_*` variables above.
 
 # AWS-CICD-Deployment-with-Github-Actions
 

@@ -1,9 +1,7 @@
 from flask import Flask, render_template, request
-from src.helper import download_hugging_face_embeddings
+from src.helper import get_api_embeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain.llms.base import LLM
-from typing import Any, Optional, List
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+from langchain_openai import ChatOpenAI
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -19,17 +17,32 @@ app = Flask(__name__)
 # Load environment variables
 # ----------------------------
 load_dotenv()
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-if not PINECONE_API_KEY:
-    raise RuntimeError(
-        "PINECONE_API_KEY is not set. Add it to a .env file locally, or as an "
-        "environment variable / secret on your hosting platform."
-    )
+
+
+def require_env(name: str, hint: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(
+            f"{name} is not set. {hint} Add it to a .env file locally, or as an "
+            "environment variable / secret on your hosting platform."
+        )
+    return value
+
+
+PINECONE_API_KEY = require_env("PINECONE_API_KEY", "It is used to search the vector index.")
+# One Hugging Face token is used for the hosted embedding model and, by default, the LLM.
+HF_TOKEN = require_env("HF_TOKEN", "Create a free token at https://huggingface.co/settings/tokens.")
+
+# LLM: any OpenAI-compatible chat endpoint (Hugging Face router by default;
+# Groq, OpenRouter, OpenAI, ... work by changing these three variables).
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://router.huggingface.co/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or HF_TOKEN
 
 # ----------------------------
 # Pinecone VectorStore
 # ----------------------------
-embeddings = download_hugging_face_embeddings()
+embeddings = get_api_embeddings(HF_TOKEN)
 index_name = os.getenv("PINECONE_INDEX_NAME", "medical-chatbot")
 docsearch = PineconeVectorStore.from_existing_index(
     index_name=index_name,
@@ -38,37 +51,19 @@ docsearch = PineconeVectorStore.from_existing_index(
 retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
 # ----------------------------
-# Hugging Face LLM for RAG
+# Hosted LLM for RAG
 # ----------------------------
-class HFAPIModel(LLM):
-    model_name: str = "google/flan-t5-base"
-    # LangChain LLMs are pydantic models: every attribute must be declared
-    # as a field, otherwise assigning it raises a ValueError at start-up.
-    pipe: Any = None
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Load tokenizer and model once at startup
-        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
-        self.pipe = pipeline(
-            "text2text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=256,
-            device=-1  # CPU; set to 0 for GPU
-        )
-
-    @property
-    def _llm_type(self) -> str:
-        return "hf-api"
-
-    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        result = self.pipe(prompt)
-        return result[0]["generated_text"]
-
-# Initialize the LLM
-chatModel = HFAPIModel()
+# The model runs on the provider's servers, so this app needs no GPU and only a
+# few hundred MB of RAM (the previous local flan-t5-base needed ~1.3 GB).
+chatModel = ChatOpenAI(
+    model=LLM_MODEL,
+    base_url=LLM_BASE_URL,
+    api_key=LLM_API_KEY,
+    temperature=0.2,
+    max_tokens=300,
+    timeout=60,
+    max_retries=2,
+)
 
 # ----------------------------
 # RAG setup
