@@ -1,6 +1,5 @@
-# Runtime dependencies for the web app (lightweight: no torch / local models).
-flask==3.1.1
-gunicorn==26.2.0
+# Runtime dependencies for the Streamlit app (lightweight: no torch / local models).
+streamlit==1.64.0
 langchain==0.3.26
 langchain-community==0.3.26
 langchain-pinecone==0.2.8

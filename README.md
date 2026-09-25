@@ -1,106 +1,130 @@
-# Medical Chatbot with LLMs, LangChain, Pinecone and Flask
+# 🩺 Medical Chatbot: RAG Q&A with sources
 
-# How to run?
-### STEPS:
+A **retrieval-augmented generation (RAG)** chatbot built with **Streamlit**. Ask a medical
+question and it answers from a real reference book, the *Gale Encyclopedia of Medicine*
+(2nd ed., 2002), and **shows the exact passages it used as sources**.
 
-Clone the repository
+> Educational demo, **not medical advice**. Answers are AI-generated from a 2002 book and may be
+> incomplete or out of date.
+
+**Developed by Saijaya Rami Reddy Chilekampalli.**
+
+## How it works
+
+```
+Your question -> Embed (MiniLM-L6-v2) -> Retrieve top 3 (Pinecone) -> Generate (Llama 3.1 8B) -> Answer + sources
+```
+
+1. The question is turned into a 384-number vector by the `all-MiniLM-L6-v2` embedding model.
+2. Pinecone returns the 3 most similar passages out of ~5,900 chunks of the book.
+3. The language model is told to answer **only** from those passages, or say it doesn't know.
+4. The app shows the answer plus a **📚 Sources** panel with the retrieved text.
+
+Setup, done once: the book's PDF is split into ~500-character chunks, embedded, and stored in a
+Pinecone index (`src/store_index.py`).
+
+## Tech stack
+
+| Area | Tools |
+|---|---|
+| AI & retrieval | RAG, LangChain, Pinecone, Sentence-Transformers (MiniLM-L6-v2), Llama 3.1 8B, Hugging Face Inference API |
+| App | Python, Streamlit |
+| Data pipeline | PyPDF, text chunking |
+| Deployment | Docker, Streamlit Community Cloud / Render, Git & GitHub |
+
+The embeddings and the language model are **hosted APIs**, so the app needs no GPU and runs in
+roughly 150 MB of RAM, which fits free hosting tiers.
+
+## Run it locally
 
 ```bash
 git clone https://github.com/sac23nht/Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS-.git
 cd Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS-
-```
-### STEP 01- Create a conda environment after opening the repository
-
-```bash
-conda create -n medibot python=3.10 -y
-```
-
-```bash
-conda activate medibot
-```
-
-
-### STEP 02- install the requirements
-```bash
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
-(`requirements.txt` is the lightweight set the web app needs. Building the
-Pinecone index once needs the heavier `requirements-indexing.txt`, see below.)
 
-
-### Create a `.env` file in the root directory with your credentials:
+Create a `.env` file in the project folder (it is git-ignored):
 
 ```ini
-PINECONE_API_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+PINECONE_API_KEY = "your-pinecone-key"
 # Free token from https://huggingface.co/settings/tokens
 # (fine-grained, tick "Make calls to Inference Providers").
-# Used for the hosted embedding model and, by default, the LLM.
-HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-# Optional
-# PINECONE_INDEX_NAME = "medical-chatbot"
-# LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
-# LLM_BASE_URL = "https://router.huggingface.co/v1"   # any OpenAI-compatible API
-# LLM_API_KEY = ""                                     # defaults to HF_TOKEN
+HF_TOKEN = "hf_your-token"
 ```
 
+Build the Pinecone index **once** (the app cannot answer anything until it exists). This is the
+only step that needs the heavy libraries (torch):
 
 ```bash
-# Run ONCE to store the book's embeddings in Pinecone (the app cannot answer
-# anything until this index exists). This is the only step that needs torch.
 pip install -r requirements-indexing.txt
 python src/store_index.py
 ```
 
-```bash
-# Finally run the following command
-python app.py
-```
-
-Now,
-```bash
-open up localhost:
-```
-
-
-### Techstack Used:
-
-- Python
-- LangChain
-- Flask
-- Pinecone (vector database)
-- Hugging Face Inference API (`all-MiniLM-L6-v2` embeddings)
-- Any OpenAI-compatible LLM API (Llama 3.1 8B via Hugging Face by default)
-
-
-
-# Deployment (Docker: Render, Railway, Fly.io, any container host)
-
-The models run on hosted APIs, so the app itself is light: about 150 MB of RAM,
-no GPU. That fits free tiers with 512 MB (Render, ...).
+Start the app:
 
 ```bash
-docker build -t medibot .
-docker run -p 8080:8080 -e PINECONE_API_KEY=... -e HF_TOKEN=... medibot
+streamlit run app.py
 ```
 
-**Environment variables** (set them as secrets on your host, never commit them):
+> The index stores each passage's page number. If you built your index before that was added,
+> re-run `python src/store_index.py` on a fresh index to get "PDF page N" in the Sources panel.
+
+## Configuration
+
+Set these as environment variables, in `.env`, or in Streamlit secrets:
 
 | Variable | Required | Notes |
 |---|---|---|
-| `PINECONE_API_KEY` | yes | The index must already be populated (`python src/store_index.py`) |
+| `PINECONE_API_KEY` | yes | The index must already be populated |
 | `HF_TOKEN` | yes | Hugging Face token with "Make calls to Inference Providers" |
 | `LLM_MODEL` | no | Default `meta-llama/Llama-3.1-8B-Instruct` |
-| `LLM_BASE_URL` | no | Default `https://router.huggingface.co/v1`. Point it at Groq, OpenRouter, OpenAI, ... to switch provider |
+| `LLM_BASE_URL` | no | Default `https://router.huggingface.co/v1`. Any OpenAI-compatible API works (Groq, OpenRouter, OpenAI, ...) |
 | `LLM_API_KEY` | no | Key for `LLM_BASE_URL`; defaults to `HF_TOKEN` |
 | `PINECONE_INDEX_NAME` | no | Default `medical-chatbot` |
-| `PORT` | no | Set automatically by most hosts |
+| `LINKEDIN_URL`, `PORTFOLIO_URL` | no | Adds buttons to the Developer tab (must start with `https://`) |
+| `DEVELOPER_NAME`, `GITHUB_URL`, `REPO_URL` | no | Override the name and links shown in the app |
 
-**Render:** New Web Service > connect this repo > Language *Docker* > Instance
-type *Free* > add the two required variables under Environment > set the
-health check path to `/health`. Free instances sleep when idle, so the first
-request after a pause takes about a minute.
+## Deploy
 
-Note: the free Hugging Face token has a limited monthly allowance for hosted
-inference. For heavier use, switch the LLM to another provider with the three
-`LLM_*` variables above.
+### Streamlit Community Cloud (free)
+1. New app > pick this repo, branch `main`, main file path `app.py`.
+2. **Advanced settings > Python version: 3.12** (the default may be too new for some packages).
+3. Advanced settings > **Secrets**:
+   ```toml
+   PINECONE_API_KEY = "your-pinecone-key"
+   HF_TOKEN = "hf_your-token"
+   ```
+
+### Docker (Render, Railway, Fly.io, any container host)
+```bash
+docker build -t medibot .
+docker run -p 8501:8501 -e PINECONE_API_KEY=... -e HF_TOKEN=... medibot
+```
+On **Render**: New Web Service > Language *Docker* > Instance type *Free* > add the two
+variables under Environment > set the health check path to `/_stcore/health`. Free instances
+sleep when idle, so the first request after a pause can take about a minute.
+
+The free Hugging Face token has a limited monthly allowance for hosted inference. For heavier use,
+point `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` at another provider.
+
+## Project structure
+
+```
+├── app.py                      # Streamlit app (UI + RAG chain)
+├── src/
+│   ├── helper.py               # PDF loading, chunking, embeddings
+│   ├── prompt.py               # System prompt
+│   └── store_index.py          # One-off: build the Pinecone index
+├── data/Medical_book.pdf       # Source book used to build the index
+├── research/trials.ipynb       # Early experiments
+├── requirements.txt            # App dependencies (lightweight)
+├── requirements-indexing.txt   # Extra dependencies for building the index
+├── Dockerfile
+└── .streamlit/config.toml      # Streamlit theme and server settings
+```
+
+## Author
+
+**Saijaya Rami Reddy Chilekampalli**: [GitHub](https://github.com/sac23nht)

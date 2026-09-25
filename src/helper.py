@@ -20,19 +20,18 @@ def load_pdf_file(data: str) -> List[Document]:
 
 def filter_to_minimal_docs(docs: List[Document]) -> List[Document]:
     """
-    Given a list of Document objects, returns a new list containing only 'source' in metadata
-    and the original page_content.
+    Given a list of Document objects, returns a new list containing only 'source' (and the
+    'page' number, when the loader provides one) in metadata, and the original page_content.
     """
     minimal_docs: List[Document] = []
     for doc in docs:
         src = doc.metadata.get("source")
         if src:  # Make sure 'source' exists in the metadata
-            minimal_docs.append(
-                Document(
-                    page_content=doc.page_content,
-                    metadata={"source": src}
-                )
-            )
+            metadata = {"source": src}
+            page = doc.metadata.get("page")
+            if page is not None:  # lets the UI cite the page each answer came from
+                metadata["page"] = page
+            minimal_docs.append(Document(page_content=doc.page_content, metadata=metadata))
     return minimal_docs
 
 
