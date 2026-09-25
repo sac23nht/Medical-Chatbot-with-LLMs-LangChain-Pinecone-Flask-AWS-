@@ -9,6 +9,13 @@ question and it answers from a real reference book, the *Gale Encyclopedia of Me
 
 **Developed by Saijaya Rami Reddy Chilekampalli.**
 
+## What you see
+
+A two-panel page: the **chat on the left** (with example questions and a 📚 Sources panel under
+every answer) and the **project details on the right**: what the app is, the source book that was
+embedded (`data/Medical_book.pdf`), a simple workflow diagram (one-time setup and per-question
+flow), the tools used, and the developer. On a phone the panels stack.
+
 ## How it works
 
 ```
@@ -83,7 +90,7 @@ Set these as environment variables, in `.env`, or in Streamlit secrets:
 | `LLM_BASE_URL` | no | Default `https://router.huggingface.co/v1`. Any OpenAI-compatible API works (Groq, OpenRouter, OpenAI, ...) |
 | `LLM_API_KEY` | no | Key for `LLM_BASE_URL`; defaults to `HF_TOKEN` |
 | `PINECONE_INDEX_NAME` | no | Default `medical-chatbot` |
-| `LINKEDIN_URL`, `PORTFOLIO_URL` | no | Adds buttons to the Developer tab (must start with `https://`) |
+| `LINKEDIN_URL`, `PORTFOLIO_URL` | no | Adds buttons to the Developer section (must start with `https://`) |
 | `DEVELOPER_NAME`, `GITHUB_URL`, `REPO_URL` | no | Override the name and links shown in the app |
 
 ## Deploy

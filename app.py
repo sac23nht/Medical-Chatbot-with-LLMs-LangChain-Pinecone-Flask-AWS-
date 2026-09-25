@@ -20,7 +20,7 @@ from src.prompt import system_prompt
 
 load_dotenv()
 
-st.set_page_config(page_title="Medical Chatbot · RAG Q&A", page_icon="🩺", layout="centered")
+st.set_page_config(page_title="Medical Chatbot · RAG Q&A", page_icon="🩺", layout="wide")
 
 # ----------------------------
 # Settings (environment variables, a local .env file, or Streamlit secrets)
@@ -59,6 +59,8 @@ PORTFOLIO_URL = safe_url(get_setting("PORTFOLIO_URL"))
 # Friendly names for the file names stored in the Pinecone metadata.
 SOURCE_TITLES = {"Medical_book.pdf": "The Gale Encyclopedia of Medicine, 2nd ed. (2002)"}
 MAX_QUESTION_CHARS = 500
+PANEL_HEIGHT = 540  # pixel height of the chat panel (the info panel is a bit taller)
+INDEXED_CHUNKS = "5,859"  # chunks stored in Pinecone by src/store_index.py
 EXAMPLES = [
     "What are the symptoms of diabetes?",
     "What is acne and how is it treated?",
@@ -135,136 +137,162 @@ def render_sources(sources: list) -> None:
 
 
 # ----------------------------
-# Header
+# Right panel: project details, source book and tool workflow
+# ----------------------------
+def flow_chart(nodes: list) -> None:
+    """A simple top-to-bottom flow diagram; each node is 'line 1\nline 2'."""
+    chain = " -> ".join(f'"{n}"' for n in nodes)
+    st.graphviz_chart(
+        'digraph { rankdir=TB; ranksep=0.22; bgcolor="transparent"; '
+        'node [shape=box, style="rounded,filled", fillcolor="#0f766e", fontcolor="white", '
+        'color="#0f766e", fontname="Helvetica", fontsize=11, margin="0.14,0.07"]; '
+        f'edge [color="#64748b"]; {chain}; }}',
+        width="stretch",
+    )
+
+
+def render_project_panel() -> None:
+    model = pretty_model(LLM_MODEL)
+
+    st.subheader("📌 About this project")
+    st.markdown(
+        "A **retrieval-augmented generation (RAG)** chatbot. It first looks up the most relevant "
+        "passages in a medical encyclopedia, then has a language model write a short answer using "
+        "only those passages. Every answer lists the passages it used, so you can check it."
+    )
+    st.markdown(
+        f"**Developed by:** {DEVELOPER_NAME}  \n"
+        f"**Language model:** {model}  \n"
+        "**Embeddings:** all-MiniLM-L6-v2 (384 dimensions)"
+    )
+
+    st.subheader("📖 Source book")
+    st.markdown(
+        "**The Gale Encyclopedia of Medicine, 2nd edition** (2002)  \n"
+        "Editor: Jacqueline L. Longe · Publisher: Gale Group  \n"
+        "File used: `data/Medical_book.pdf`"
+    )
+    st.markdown(
+        "This is the book that was read, embedded and stored in Pinecone:\n"
+        f"- split into **{INDEXED_CHUNKS} text chunks** (~500 characters each)\n"
+        "- embedded with **all-MiniLM-L6-v2**\n"
+        f"- stored in the Pinecone index **{INDEX_NAME}** (cosine similarity)"
+    )
+
+    st.subheader("🛠️ Workflow")
+    tab_setup, tab_query = st.tabs(["① One-time setup", "② Every question"])
+    with tab_setup:
+        flow_chart([
+            "Medical_book.pdf\n(Gale Encyclopedia of Medicine)",
+            "Load the pages\n(PyPDF via LangChain)",
+            "Split into chunks\n(500 characters, 20 overlap)",
+            "Embed each chunk\n(MiniLM-L6-v2, 384 numbers)",
+            "Store the vectors\n(Pinecone index)",
+        ])
+    with tab_query:
+        flow_chart([
+            "Your question",
+            "Embed the question\n(MiniLM-L6-v2, Hugging Face API)",
+            "Search Pinecone\n(3 closest chunks)",
+            f"Write the answer\n({model}, only from those chunks)",
+            "Answer + Sources\n(shown in the chat)",
+        ])
+
+    st.subheader("🧰 Tools")
+    st.markdown(
+        "| Step | Tool |\n|---|---|\n"
+        "| Read the PDF | PyPDF (LangChain loader) |\n"
+        "| Split the text | LangChain text splitter |\n"
+        "| Embeddings | Sentence-Transformers MiniLM-L6-v2 |\n"
+        "| Vector database | Pinecone |\n"
+        f"| Language model | {model} (Hugging Face Inference API) |\n"
+        "| Web app | Python, Streamlit |\n"
+        "| Packaging | Docker |"
+    )
+
+    st.subheader("👩‍💻 Developer")
+    st.markdown(f"**{DEVELOPER_NAME}** designed, built and deployed this project end to end.")
+    links = [(label, url) for label, url in (
+        ("GitHub profile", GITHUB_URL), ("Source code", REPO_URL),
+        ("LinkedIn", LINKEDIN_URL), ("Portfolio", PORTFOLIO_URL)) if url]
+    for row in range(0, len(links), 2):
+        cols = st.columns(2)
+        for col, (label, url) in zip(cols, links[row:row + 2]):
+            col.link_button(label, url, width="stretch")
+
+
+# ----------------------------
+# Page
 # ----------------------------
 st.title("🩺 Medical Chatbot")
 st.markdown(
     "Ask a medical question and get a short answer **grounded in a real reference book**, "
-    "the *Gale Encyclopedia of Medicine*, with the passages it used shown as sources."
+    "with the passages it used shown as sources."
 )
 st.caption(f"Developed by **{DEVELOPER_NAME}** · LangChain · Pinecone · {pretty_model(LLM_MODEL)} · Streamlit")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Passages indexed", "~5,900")
-c2.metric("Retrieved per question", "3")
-c3.metric("Language model", pretty_model(LLM_MODEL))
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ----------------------------
-# About (open for first-time visitors, folds away once the chat starts)
-# ----------------------------
-with st.expander("ℹ️ What is this, how do I use it, and who built it?",
-                 expanded=not st.session_state.messages):
-    t_about, t_use, t_how, t_tech, t_dev = st.tabs(
-        ["What is it", "How to use", "How it works", "Built with", "Developer"]
-    )
-    with t_about:
-        st.markdown(
-            "A **retrieval-augmented generation (RAG)** chatbot. Rather than answering from "
-            "memory, it first *looks up* the most relevant passages in a medical encyclopedia, "
-            "then has a language model write a short answer using only those passages. "
-            "Every answer lists the passages it was based on, so you can check it."
-        )
-        st.markdown(
-            "- **Grounded:** the model is told to say it doesn't know if the passages don't cover the question.\n"
-            "- **Transparent:** open **Sources** under any answer to see the retrieved text.\n"
-            "- **Lightweight:** embeddings and the language model are hosted APIs, "
-            "so the app needs no GPU and only a few hundred MB of RAM."
-        )
-        st.info("Educational demo, **not medical advice**. Answers come from an AI model reading a "
-                "2002 reference book and may be incomplete or out of date.")
-    with t_use:
-        st.markdown(
-            "1. **Ask**: type a question in plain English below, or tap an example.\n"
-            "2. **Read**: you get a short answer written from the top three matching passages.\n"
-            "3. **Check**: expand **📚 Sources** to see the exact passages behind the answer.\n"
-            "4. **Refine**: ask about one condition or symptom at a time, and rephrase if the answer is thin."
-        )
-        st.caption("The first reply after a quiet period can take up to a minute on a free host.")
-    with t_how:
-        st.graphviz_chart(
-            'digraph { rankdir=TB; ranksep=0.25; bgcolor="transparent"; '
-            'node [shape=box, style="rounded,filled", fillcolor="#0f766e", fontcolor="white", '
-            'color="#0f766e", fontname="Helvetica", fontsize=11]; edge [color="#64748b"]; '
-            '"Your question" -> "Embed\\n(MiniLM-L6-v2)" -> "Retrieve top 3\\n(Pinecone)" '
-            f'-> "Generate\\n({pretty_model(LLM_MODEL)})" -> "Answer + sources"; }}',
-            width="stretch",
-        )
-        st.markdown(
-            "1. Your question is turned into a 384-number vector by the MiniLM-L6-v2 embedding model.\n"
-            "2. Pinecone finds the 3 most similar passages among ~5,900 chunks of the book.\n"
-            "3. The language model writes a short answer using only those passages.\n"
-            "4. The answer and its sources are shown here."
-        )
-        st.caption("Setup, done once: the book's PDF is split into ~500-character chunks, embedded, "
-                   "and stored in a Pinecone index.")
-    with t_tech:
-        st.markdown(
-            "**AI & retrieval:** RAG · LangChain · Pinecone · Sentence-Transformers (MiniLM-L6-v2) · "
-            f"{pretty_model(LLM_MODEL)} · Hugging Face Inference API  \n"
-            "**App:** Python · Streamlit  \n"
-            "**Data pipeline:** PyPDF · text chunking  \n"
-            "**Deployment:** Docker · Git & GitHub"
-        )
-    with t_dev:
-        st.subheader(DEVELOPER_NAME)
-        st.markdown(
-            "Designed, built and deployed this project end to end: document ingestion and chunking, "
-            "the vector index, the RAG pipeline, this interface, containerisation and hosting."
-        )
-        cols = st.columns(4)
-        buttons = [("GitHub profile", GITHUB_URL), ("Source code", REPO_URL),
-                   ("LinkedIn", LINKEDIN_URL), ("Portfolio", PORTFOLIO_URL)]
-        for col, (label, url) in zip(cols, [b for b in buttons if b[1]] + [("", "")] * 4):
-            if url:
-                col.link_button(label, url)
+chat_col, info_col = st.columns([3, 2], gap="large")
 
-# ----------------------------
-# Chat
-# ----------------------------
-missing = [n for n, v in (("PINECONE_API_KEY", PINECONE_API_KEY), ("HF_TOKEN", HF_TOKEN)) if not v]
-if missing:
-    st.error(f"Missing configuration: {', '.join(missing)}. Set it as an environment variable, "
-             "in a local `.env` file, or in Streamlit secrets.")
-    st.stop()
+with info_col:
+    with st.container(height=PANEL_HEIGHT + 70, border=True):
+        render_project_panel()
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        if message["role"] == "user":
-            st.text(message["content"])
-        else:
-            st.markdown(message["content"])
-            render_sources(message.get("sources"))
+with chat_col:
+    missing = [n for n, v in (("PINECONE_API_KEY", PINECONE_API_KEY), ("HF_TOKEN", HF_TOKEN)) if not v]
+    if missing:
+        st.error(f"Missing configuration: {', '.join(missing)}. Set it as an environment variable, "
+                 "in a local `.env` file, or in Streamlit secrets.")
+        st.stop()
 
-if not st.session_state.messages:
-    st.markdown("**Try an example:**")
-    for example in EXAMPLES:
-        st.button(example, key=f"ex-{example}", on_click=lambda q=example: st.session_state.update(pending=q))
+    chat_box = st.container(height=PANEL_HEIGHT, border=True)
+    typed = st.chat_input("Ask a medical question…", max_chars=MAX_QUESTION_CHARS)
 
-typed = st.chat_input("Ask a medical question…", max_chars=MAX_QUESTION_CHARS)
 question = (st.session_state.pop("pending", None) or typed or "").strip()
 
-if question:
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.text(question)
-    with st.chat_message("assistant"):
-        try:
-            chain = load_chain(PINECONE_API_KEY, HF_TOKEN, INDEX_NAME, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY)
-            with st.spinner("Searching the encyclopedia…"):
-                response = chain.invoke({"input": question})
-            answer = (response.get("answer") or "").strip() or "Sorry, I couldn't generate an answer."
-            sources = format_sources(response.get("context", []))
-        except Exception as exc:  # network / quota / index problems
-            print("Error:", exc)
-            answer, sources = "Sorry, something went wrong while generating the answer. Please try again.", []
-        st.markdown(answer)
-        render_sources(sources)
-    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
-    if len(st.session_state.messages) == 2:
-        st.rerun()  # fold the About section now that the conversation has started
+with chat_box:
+    if not st.session_state.messages and not question:
+        with st.chat_message("assistant"):
+            st.markdown("Hi! Ask me a medical question in plain English, for example about a "
+                        "symptom, condition or treatment. I answer from the *Gale Encyclopedia of "
+                        "Medicine* and show my sources.")
+        st.caption("Try an example:")
+        example_cols = st.columns(2)
+        for i, example in enumerate(EXAMPLES):
+            example_cols[i % 2].button(
+                example, key=f"ex-{i}", width="stretch",
+                on_click=lambda q=example: st.session_state.update(pending=q),
+            )
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if message["role"] == "user":
+                st.text(message["content"])
+            else:
+                st.markdown(message["content"])
+                render_sources(message.get("sources"))
+
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.text(question)
+        with st.chat_message("assistant"):
+            try:
+                chain = load_chain(PINECONE_API_KEY, HF_TOKEN, INDEX_NAME,
+                                   LLM_BASE_URL, LLM_MODEL, LLM_API_KEY)
+                with st.spinner("Searching the encyclopedia…"):
+                    response = chain.invoke({"input": question})
+                answer = (response.get("answer") or "").strip() or "Sorry, I couldn't generate an answer."
+                sources = format_sources(response.get("context", []))
+            except Exception as exc:  # network / quota / index problems
+                print("Error:", exc)
+                answer = "Sorry, something went wrong while generating the answer. Please try again."
+                sources = []
+            st.markdown(answer)
+            render_sources(sources)
+        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
 
 st.caption("Educational demo, not medical advice. Answers are AI-generated from the "
            "Gale Encyclopedia of Medicine (2nd ed., 2002) and may be incomplete or out of date.")
