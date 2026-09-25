@@ -90,7 +90,8 @@ Set these as environment variables, in `.env`, or in Streamlit secrets:
 | `LLM_BASE_URL` | no | Default `https://router.huggingface.co/v1`. Any OpenAI-compatible API works (Groq, OpenRouter, OpenAI, ...) |
 | `LLM_API_KEY` | no | Key for `LLM_BASE_URL`; defaults to `HF_TOKEN` |
 | `PINECONE_INDEX_NAME` | no | Default `medical-chatbot` |
-| `LINKEDIN_URL`, `PORTFOLIO_URL` | no | Adds buttons to the Developer section (must start with `https://`) |
+| `LINKEDIN_URL`, `PORTFOLIO_URL` | no | Buttons in the Developer section (must start with `https://`). LinkedIn defaults to the author's profile |
+| `DEVELOPER_SUMMARY` | no | Profile summary shown in the Developer section |
 | `DEVELOPER_NAME`, `GITHUB_URL`, `REPO_URL` | no | Override the name and links shown in the app |
 
 ## Deploy
@@ -124,6 +125,7 @@ point `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` at another provider.
 │   ├── helper.py               # PDF loading, chunking, embeddings
 │   ├── prompt.py               # System prompt
 │   └── store_index.py          # One-off: build the Pinecone index
+├── assets/profile.jpg          # Developer photo shown in the app
 ├── data/Medical_book.pdf       # Source book used to build the index
 ├── research/trials.ipynb       # Early experiments
 ├── requirements.txt            # App dependencies (lightweight)

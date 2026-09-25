@@ -6,6 +6,7 @@ passages from Pinecone -> ask a hosted LLM to answer using only those passages
 """
 import os
 import re
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -53,8 +54,20 @@ GITHUB_URL = safe_url(get_setting("GITHUB_URL", "https://github.com/sac23nht"))
 REPO_URL = safe_url(get_setting(
     "REPO_URL", "https://github.com/sac23nht/Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS-"
 ))
-LINKEDIN_URL = safe_url(get_setting("LINKEDIN_URL"))
+LINKEDIN_URL = safe_url(get_setting(
+    "LINKEDIN_URL", "https://www.linkedin.com/in/saijaya-rami-reddy-chilekampalli-71b175170/"
+))
 PORTFOLIO_URL = safe_url(get_setting("PORTFOLIO_URL"))
+PROFILE_IMAGE = Path(__file__).parent / "assets" / "profile.jpg"
+# Shown in the Developer section. Replace it with your own LinkedIn "About" text,
+# either here or with the DEVELOPER_SUMMARY setting.
+DEVELOPER_SUMMARY = get_setting(
+    "DEVELOPER_SUMMARY",
+    "Builds end-to-end machine-learning projects, from data analysis and model training "
+    "through to a deployed web app. Other work in this portfolio: a predictive-maintenance "
+    "model for LoRaWAN water meters (scikit-learn, XGBoost, Streamlit). This project uses "
+    "LangChain, Pinecone, Llama 3.1 and Docker.",
+)
 
 # Friendly names for the file names stored in the Pinecone metadata.
 SOURCE_TITLES = {"Medical_book.pdf": "The Gale Encyclopedia of Medicine, 2nd ed. (2002)"}
@@ -211,7 +224,14 @@ def render_project_panel() -> None:
     )
 
     st.subheader("👩‍💻 Developer")
-    st.markdown(f"**{DEVELOPER_NAME}** designed, built and deployed this project end to end.")
+    if PROFILE_IMAGE.exists():
+        photo_col, name_col = st.columns([1, 2], vertical_alignment="center")
+        photo_col.image(str(PROFILE_IMAGE), width=130)
+        name_col.markdown(f"**{DEVELOPER_NAME}**")
+        name_col.caption("Designed, built and deployed this project end to end.")
+    else:
+        st.markdown(f"**{DEVELOPER_NAME}** designed, built and deployed this project end to end.")
+    st.markdown(DEVELOPER_SUMMARY)
     links = [(label, url) for label, url in (
         ("GitHub profile", GITHUB_URL), ("Source code", REPO_URL),
         ("LinkedIn", LINKEDIN_URL), ("Portfolio", PORTFOLIO_URL)) if url]
